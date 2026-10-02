@@ -1,0 +1,82 @@
+name: Build LegacyPadDisplay iOS 12 IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode 15.4
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
+      - name: Show toolchain
+        run: |
+          set -e
+          xcodebuild -version
+          xcode-select -p
+
+      - name: Build
+        run: |
+          set -e
+
+          xcodebuild \
+            -project iOS/LegacyPadDisplay.xcodeproj \
+            -scheme LegacyPadDisplay \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/LegacyPadDisplayDerived" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Check build
+        run: |
+          set -e
+
+          APP="$RUNNER_TEMP/LegacyPadDisplayDerived/Build/Products/Release-iphoneos/LegacyPadDisplay.app"
+
+          test -d "$APP"
+          test -f "$APP/Info.plist"
+          test -f "$APP/LegacyPadDisplay"
+
+          echo "===== Bundle ID ====="
+          /usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleIdentifier' \
+            "$APP/Info.plist"
+
+          echo "===== Architecture ====="
+          lipo -info "$APP/LegacyPadDisplay"
+
+      - name: Package IPA
+        run: |
+          set -e
+
+          APP="$RUNNER_TEMP/LegacyPadDisplayDerived/Build/Products/Release-iphoneos/LegacyPadDisplay.app"
+          OUT="$RUNNER_TEMP/LegacyPadDisplayIPA"
+
+          mkdir -p "$OUT/Payload"
+          cp -R "$APP" "$OUT/Payload/"
+
+          cd "$OUT"
+          ditto -c -k --sequesterRsrc --keepParent \
+            Payload \
+            LegacyPadDisplay-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LegacyPadDisplay-IPA
+          path: ${{ runner.temp }}/LegacyPadDisplayIPA/LegacyPadDisplay-unsigned.ipa
+          if-no-files-found: error
