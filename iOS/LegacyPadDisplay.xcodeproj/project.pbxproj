@@ -146,7 +146,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.legacypaddisplay;
+				PRODUCT_BUNDLE_IDENTIFIER = outlook.com.sleepinclasandnupote.ipadmini2displaysixseven;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -222,7 +222,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.legacypaddisplay;
+				PRODUCT_BUNDLE_IDENTIFIER = outlook.com.sleepinclasandnupote.ipadmini2displaysixseven;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
