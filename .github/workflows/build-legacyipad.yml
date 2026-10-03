@@ -2,106 +2,86 @@ name: Build LegacyPadDisplay iOS 12 IPA
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "iOS/**"
+      - ".github/workflows/build-legacyipad.yml"
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: macos-14
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Select Xcode 15.4
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '15.4'
+          xcode-version: "15.4"
 
       - name: Show toolchain
         run: |
-          set -e
+          set -euo pipefail
           xcodebuild -version
           xcode-select -p
-      - name: Downgrade project format for Xcode 15.4
-        run: |
-          set -e
 
+      - name: Adapt project format for Xcode 15.4
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path("iOS/LegacyPadDisplay.xcodeproj/project.pbxproj")
           text = path.read_text()
-
-          text = text.replace(
-              "objectVersion = 77;",
-              "objectVersion = 63;"
-          )
-
-          text = text.replace(
-              "preferredProjectObjectVersion = 77;",
-              "preferredProjectObjectVersion = 63;"
-          )
-
+          for old in ("77", "63"):
+              text = text.replace(f"objectVersion = {old};", "objectVersion = 60;", 1)
+              text = text.replace(f"preferredProjectObjectVersion = {old};", "preferredProjectObjectVersion = 60;", 1)
           path.write_text(text)
           PY
+          grep -E 'objectVersion|preferredProjectObjectVersion' iOS/LegacyPadDisplay.xcodeproj/project.pbxproj
 
-          echo "===== Project format ====="
-          grep -E "objectVersion|preferredProjectObjectVersion" \
-            iOS/LegacyPadDisplay.xcodeproj/project.pbxproj
-      - name: Build
+      - name: Build unsigned app for iOS 12
         run: |
-          set -e
-
+          set -o pipefail
           xcodebuild \
             -project iOS/LegacyPadDisplay.xcodeproj \
-            -scheme LegacyPadDisplay \
+            -target LegacyPadDisplay \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/LegacyPadDisplayDerived" \
+            IPHONEOS_DEPLOYMENT_TARGET=12.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            build
+            build | tee "$RUNNER_TEMP/xcodebuild.log"
 
-      - name: Check build
+      - name: Verify app and package IPA
         run: |
-          set -e
-
+          set -euo pipefail
           APP="$RUNNER_TEMP/LegacyPadDisplayDerived/Build/Products/Release-iphoneos/LegacyPadDisplay.app"
-
           test -d "$APP"
           test -f "$APP/Info.plist"
           test -f "$APP/LegacyPadDisplay"
-
+          MINIMUM_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")
+          test "$MINIMUM_OS" = "12.0"
+          echo "Verified MinimumOSVersion: $MINIMUM_OS"
           echo "===== Bundle ID ====="
-          /usr/libexec/PlistBuddy \
-            -c 'Print :CFBundleIdentifier' \
-            "$APP/Info.plist"
-
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
           echo "===== Architecture ====="
           lipo -info "$APP/LegacyPadDisplay"
+          mkdir -p "$RUNNER_TEMP/LegacyPadDisplayIPA/Payload"
+          ditto "$APP" "$RUNNER_TEMP/LegacyPadDisplayIPA/Payload/LegacyPadDisplay.app"
+          cd "$RUNNER_TEMP/LegacyPadDisplayIPA"
+          /usr/bin/zip -qry "$GITHUB_WORKSPACE/LegacyPadDisplay-unsigned.ipa" Payload
+          /usr/bin/unzip -t "$GITHUB_WORKSPACE/LegacyPadDisplay-unsigned.ipa"
 
-      - name: Package IPA
-        run: |
-          set -e
-
-          APP="$RUNNER_TEMP/LegacyPadDisplayDerived/Build/Products/Release-iphoneos/LegacyPadDisplay.app"
-          OUT="$RUNNER_TEMP/LegacyPadDisplayIPA"
-
-          mkdir -p "$OUT/Payload"
-          cp -R "$APP" "$OUT/Payload/"
-
-          cd "$OUT"
-          ditto -c -k --sequesterRsrc --keepParent \
-            Payload \
-            LegacyPadDisplay-unsigned.ipa
-
-      - name: Upload IPA
+      - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: LegacyPadDisplay-IPA
-          path: ${{ runner.temp }}/LegacyPadDisplayIPA/LegacyPadDisplay-unsigned.ipa
+          name: LegacyPadDisplay-unsigned-ipa
+          path: LegacyPadDisplay-unsigned.ipa
           if-no-files-found: error
+          retention-days: 30
