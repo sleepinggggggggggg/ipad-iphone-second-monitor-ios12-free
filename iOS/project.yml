@@ -1,7 +1,7 @@
 name: LegacyPadDisplay
 options:
   createIntermediateGroups: true
-  bundleIdPrefix: com.example.legacypaddisplay
+  bundleIdPrefix: outlook.com.sleepinclasandnupote
 
 settings:
   base:
@@ -37,7 +37,7 @@ targets:
           - "_opensidecar._tcp"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.legacypaddisplay
+        PRODUCT_BUNDLE_IDENTIFIER: outlook.com.sleepinclasandnupote.ipadmini2displaysixseven
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         IPHONEOS_DEPLOYMENT_TARGET: "12.0"
