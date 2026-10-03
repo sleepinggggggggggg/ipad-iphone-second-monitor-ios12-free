@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   build:
+    # macOS 14 is the GitHub-hosted image that provides Xcode 15.4.
     runs-on: macos-14
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,14 +35,18 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
           path = Path("iOS/LegacyPadDisplay.xcodeproj/project.pbxproj")
           text = path.read_text()
-          for old in ("77", "63"):
-              text = text.replace(f"objectVersion = {old};", "objectVersion = 60;", 1)
-              text = text.replace(f"preferredProjectObjectVersion = {old};", "preferredProjectObjectVersion = 60;", 1)
+          for marker in ("objectVersion = 77;", "preferredProjectObjectVersion = 77;"):
+              if marker not in text:
+                  raise SystemExit(f"Expected project-format marker is missing: {marker}")
+          text = text.replace("objectVersion = 77;", "objectVersion = 60;", 1)
+          text = text.replace("preferredProjectObjectVersion = 77;", "preferredProjectObjectVersion = 60;", 1)
           path.write_text(text)
           PY
-          grep -E 'objectVersion|preferredProjectObjectVersion' iOS/LegacyPadDisplay.xcodeproj/project.pbxproj
+          grep -E 'objectVersion|preferredProjectObjectVersion' \
+            iOS/LegacyPadDisplay.xcodeproj/project.pbxproj
 
       - name: Build unsigned app for iOS 12
         run: |
@@ -50,7 +56,8 @@ jobs:
             -target LegacyPadDisplay \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath "$RUNNER_TEMP/LegacyPadDisplayDerived" \
+            CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/LegacyPadDisplayDerived/Build/Products/Release-iphoneos" \
+            OBJROOT="$RUNNER_TEMP/LegacyPadDisplayDerived/Build/Intermediates.noindex" \
             IPHONEOS_DEPLOYMENT_TARGET=12.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -65,18 +72,25 @@ jobs:
           test -d "$APP"
           test -f "$APP/Info.plist"
           test -f "$APP/LegacyPadDisplay"
+
           MINIMUM_OS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")
           test "$MINIMUM_OS" = "12.0"
           echo "Verified MinimumOSVersion: $MINIMUM_OS"
+
           echo "===== Bundle ID ====="
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
           echo "===== Architecture ====="
           lipo -info "$APP/LegacyPadDisplay"
-          mkdir -p "$RUNNER_TEMP/LegacyPadDisplayIPA/Payload"
-          ditto "$APP" "$RUNNER_TEMP/LegacyPadDisplayIPA/Payload/LegacyPadDisplay.app"
-          cd "$RUNNER_TEMP/LegacyPadDisplayIPA"
-          /usr/bin/zip -qry "$GITHUB_WORKSPACE/LegacyPadDisplay-unsigned.ipa" Payload
-          /usr/bin/unzip -t "$GITHUB_WORKSPACE/LegacyPadDisplay-unsigned.ipa"
+
+          OUT="$RUNNER_TEMP/LegacyPadDisplayIPA"
+          IPA="$GITHUB_WORKSPACE/LegacyPadDisplay-unsigned.ipa"
+          mkdir -p "$OUT/Payload"
+          ditto "$APP" "$OUT/Payload/LegacyPadDisplay.app"
+          (cd "$OUT" && /usr/bin/zip -qry "$IPA" Payload)
+          test -s "$IPA"
+          /usr/bin/unzip -t "$IPA"
+          /usr/bin/unzip -Z1 "$IPA" | grep -Fxq 'Payload/LegacyPadDisplay.app/Info.plist'
+          /usr/bin/unzip -Z1 "$IPA" | grep -Fxq 'Payload/LegacyPadDisplay.app/LegacyPadDisplay'
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
